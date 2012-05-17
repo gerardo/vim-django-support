@@ -14,12 +14,11 @@ endif
 py << EOF
 import os
 import sys
+import vim
 
 if sys.version_info[:2] < (2, 5):
     raise AssertionError('Vim must be compiled with Python 2.5 or higher; you have ' + sys.version)
-# get the directory of this script is in
-scriptroot = os.path.dirname(vim.eval('expand("<sfile>")'))
-scriptroot = os.path.abspath(scriptroot)
+
 def find_django_settings_module(root):
     root = os.path.abspath(root)
     project_name = os.path.basename(root)
@@ -34,24 +33,26 @@ def find_django_settings_module(root):
     else:
         os.environ['PYTHONPATH'] = root
     return "%s.settings" % project_name
-if 'DJANGO_SETTINGS_MODULE' not in os.environ:
+
+if os.path.exists('manage.py') and 'DJANGO_SETTINGS_MODULE' not in os.environ:
+
+    #Virtualenv support
+    if 'VIRTUAL_ENV' in os.environ:
+        project_base_dir = os.environ['VIRTUAL_ENV']
+        sys.path.insert(0, project_base_dir)
+        activate_this = os.path.join(project_base_dir, 'bin/activate_this.py')
+        execfile(activate_this, dict(__file__=activate_this))
+        # Save virtual environment name to VIM variable
+        vim.command("let g:pythonworkon = '%s'" % os.path.basename(project_base_dir))
+
     # try to find settings.py
     settings = None
-    if os.path.exists('settings.py'):
-        settings = find_django_settings_module('')
-    elif os.path.exists(u'src'):
-        files = os.listdir(u'src')
-        for file in files:
-            file = os.path.join('src', file)
-            if os.path.exists(os.path.join(file, 'settings.py')):
-                settings = find_django_settings_module(file)
-                break
-    if not settings:
-        # use mock settings
-        mock = os.path.join(scriptroot, r'lib/vim_django_support_mock_project')
-        settings = find_django_settings_module(mock)
+    for root, dirs, files in os.walk('.'):
+        if os.path.exists(os.path.join(root, 'settings.py')):
+            settings = find_django_settings_module(root)
+
     os.environ['DJANGO_SETTINGS_MODULE'] = settings
-    # Now try to load django.db. Without this code, pythoncomplete doesn't work correctly
+    # Now try to load django.db
     try:
         import django.db
     except ImportError:
